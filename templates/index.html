@@ -32,24 +32,19 @@
       <p class="mt-6 text-xl font-semibold text-green-400">{{ message }}</p>
     {% endif %}
 
-    {% if files %}
-      <div class="mt-8 text-left">
-        <h2 class="text-2xl font-bold text-white mb-4">Fichiers téléchargés :</h2>
-        <ul class="space-y-2">
-          {% for file in files %}
-            <li>
-              <a
-                href="{{ file }}"
-                download
-                class="text-orange-400 hover:text-orange-200 underline transition duration-150"
-              >
-                {{ file.split('/')[-1] }}
-              </a>
-            </li>
-          {% endfor %}
-        </ul>
-      </div>
-    {% endif %}
+{% if files %}
+  <div class="mt-8 text-left">
+    <h2 class="text-xl text-white font-bold mb-4">Fichiers disponibles :</h2>
+    <ul class="space-y-2">
+      {% for file in files %}
+        <li>
+          <a href="{{ file.url }}" class="text-green-400 hover:underline" download>{{ file.name }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
   </div>
 
 </body>

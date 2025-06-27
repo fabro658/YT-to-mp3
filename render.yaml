@@ -3,5 +3,5 @@ services:
     name: yt-to-mp3
     env: python
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn app:app"
+    startCommand: "gunicorn wsgi:app"
     plan: free

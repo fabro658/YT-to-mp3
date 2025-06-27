@@ -1,15 +1,18 @@
-from flask import Flask, request, send_file, render_template_string
-import subprocess
-import os
 import os
 import re
 import subprocess
+import unicodedata
 from flask import Flask, request, render_template
 
 app = Flask(__name__)
 
 BASE_DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
 os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
+
+def sanitize_filename(name):
+    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
+    name = re.sub(r'[^\w\-_.]', '_', name)
+    return name.strip().replace('\n', '').replace('\r', '')
 
 def extract_playlist_name(url):
     """
@@ -23,10 +26,8 @@ def extract_playlist_name(url):
             text=True,
             check=True
         )
-        name = result.stdout.strip()
-        # Nettoie le nom pour qu'il soit un nom de dossier valide
-        name = re.sub(r"[^\w\s-]", '', name).strip().replace(' ', '_')
-        return name
+        raw_name = result.stdout.strip()
+        return sanitize_filename(raw_name)
     except subprocess.CalledProcessError:
         return "playlist_inconnue"
 

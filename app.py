@@ -6,7 +6,6 @@ from flask import Flask, request, render_template
 
 app = Flask(__name__)
 
-# Chemin de base où toutes les playlists seront enregistrées
 BASE_DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
 os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
 

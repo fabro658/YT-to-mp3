@@ -55,7 +55,7 @@ def index():
             try:
                 # 4. Lance le téléchargement dans ce dossier
                 subprocess.run(command, cwd=target_dir, check=True)
-                message = f" Playlist téléchargée dans le dossier : <b>{playlist_name}</b>"
+                message = f" Playlist téléchargée"
             except subprocess.CalledProcessError:
                 message = " Erreur pendant le téléchargement."
 

@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, send_file
+from flask import Flask, request, send_file, render_template_string
 import subprocess
 import os
 import re
@@ -10,6 +10,9 @@ import tempfile
 app = Flask(__name__)
 
 def extract_playlist_name(url):
+    """
+    Utilise yt-dlp pour obtenir le nom de la playlist.
+    """
     try:
         result = subprocess.run(
             ["yt-dlp", "--print", "%(playlist_title)s", url],
@@ -20,10 +23,13 @@ def extract_playlist_name(url):
         )
         name = result.stdout.strip()
         return sanitize_filename(name)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
         return "playlist_inconnue"
 
 def sanitize_filename(name):
+    """
+    Nettoie un nom de fichier en supprimant les caractères invalides.
+    """
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
     name = re.sub(r'[^\w\-_.]', '_', name)
     return name.strip().replace('\n', '').replace('\r', '')
@@ -47,8 +53,15 @@ def index():
             ]
 
             try:
-                subprocess.run(command, cwd=target_dir, check=True)
+                result = subprocess.run(
+                    command,
+                    cwd=target_dir,
+                    check=True,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
 
+                # Crée un fichier ZIP
                 zip_path = os.path.join(temp_dir, f"{playlist_name}.zip")
                 with zipfile.ZipFile(zip_path, "w") as zipf:
                     for root, _, files in os.walk(target_dir):
@@ -66,10 +79,11 @@ def index():
                     mimetype='application/zip'
                 )
 
-            except subprocess.CalledProcessError:
-                message = "Erreur pendant le téléchargement."
+            except subprocess.CalledProcessError as e:
+                message = f"Erreur yt-dlp :<br><pre>{e.stderr}</pre>"
+
             except Exception as e:
-                message = f"Erreur serveur : {e}"
+                message = f"Erreur serveur :<br><pre>{str(e)}</pre>"
 
     return render_template_string("""
     <!DOCTYPE html>
@@ -78,12 +92,14 @@ def index():
       <meta charset="UTF-8">
       <title>Télécharger une playlist</title>
     </head>
-    <body style="font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh;">
-      <form method="POST" style="background:#f9f9f9; padding:2rem; border-radius:8px; box-shadow:0 0 10px rgba(0,0,0,0.1);">
-        <h2>Télécharger une playlist YouTube en MP3</h2>
-        <input type="text" name="playlist_url" placeholder="URL de la playlist" required style="width:100%; padding:0.5rem;"><br><br>
-        <button type="submit">Convertir et Télécharger</button><br><br>
-        {% if message %}<p style="color:red;">{{ message }}</p>{% endif %}
+    <body style="font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; background:#f0f0f0;">
+      <form method="POST" style="background:#fff; padding:2rem; border-radius:8px; box-shadow:0 0 10px rgba(0,0,0,0.1); width:100%; max-width:500px;">
+        <h2 style="margin-bottom:1rem;">Télécharger une playlist YouTube en MP3</h2>
+        <input type="text" name="playlist_url" placeholder="URL de la playlist" required style="width:100%; padding:0.5rem; margin-bottom:1rem;">
+        <button type="submit" style="padding:0.5rem 1rem;">Convertir et Télécharger</button>
+        {% if message %}
+          <div style="margin-top:1rem; color:red;">{{ message|safe }}</div>
+        {% endif %}
       </form>
     </body>
     </html>

@@ -1,11 +1,12 @@
-from flask import Flask, render_template, request, send_from_directory, url_for
+from flask import Flask, render_template, request, send_file
 import subprocess
 import os
 import re
+import shutil
+import tempfile
+import zipfile
 
 app = Flask(__name__)
-BASE_DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
-os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
 
 def extract_playlist_name(url):
     """
@@ -20,52 +21,50 @@ def extract_playlist_name(url):
             check=True
         )
         name = result.stdout.strip()
-        # Nettoie le nom pour qu'il soit un nom de dossier valide
         name = re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_')
-        return name
+        return name or "playlist"
     except subprocess.CalledProcessError:
-        return "playlist_inconnue"
+        return "playlist"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    message = ""
-    files = []
-
     if request.method == "POST":
         url = request.form.get("playlist_url")
         if url:
             playlist_name = extract_playlist_name(url)
-            target_dir = os.path.join(BASE_DOWNLOAD_DIR, playlist_name)
-            os.makedirs(target_dir, exist_ok=True)
 
-            command = [
-                "yt-dlp",
-                "-x",
-                "--audio-format", "mp3",
-                "-o", "%(playlist_index)s - %(title)s.%(ext)s",
-                url
-            ]
-            try:
-                subprocess.run(command, cwd=target_dir, check=True)
-                message = f"Téléchargement terminé dans le dossier : {playlist_name}"
+            with tempfile.TemporaryDirectory() as temp_dir:
+                output_path = os.path.join(temp_dir, "%(playlist_index)s - %(title)s.%(ext)s")
 
-                # Récupère les fichiers mp3 générés
-                for file in os.listdir(target_dir):
-                    if file.endswith(".mp3"):
-                        download_url = url_for('download_file', playlist=playlist_name, filename=file)
-                        files.append({"name": file, "url": download_url})
+                command = [
+                    "yt-dlp",
+                    "-x",
+                    "--audio-format", "mp3",
+                    "-o", output_path,
+                    url
+                ]
 
-            except subprocess.CalledProcessError:
-                message = "Erreur pendant le téléchargement."
+                try:
+                    subprocess.run(command, cwd=temp_dir, check=True)
+                except subprocess.CalledProcessError:
+                    return render_template("index.html", message="Erreur pendant le téléchargement.")
 
-    return render_template("index.html", message=message, files=files)
+                # Création de l'archive zip
+                zip_path = os.path.join(temp_dir, f"{playlist_name}.zip")
+                with zipfile.ZipFile(zip_path, 'w') as zipf:
+                    for root, dirs, files in os.walk(temp_dir):
+                        for file in files:
+                            if file.endswith(".mp3"):
+                                file_path = os.path.join(root, file)
+                                arcname = os.path.relpath(file_path, temp_dir)
+                                zipf.write(file_path, arcname)
 
-@app.route('/downloads/<playlist>/<filename>')
-def download_file(playlist, filename):
-    """
-    Sert un fichier mp3 à partir du dossier de téléchargement.
-    """
-    return send_from_directory(os.path.join(BASE_DOWNLOAD_DIR, playlist), filename, as_attachment=True)
+                return send_file(zip_path,
+                                 mimetype='application/zip',
+                                 as_attachment=True,
+                                 download_name=f"{playlist_name}.zip")
+
+    return render_template("index.html", message="")
 
 if __name__ == "__main__":
     app.run(debug=True)

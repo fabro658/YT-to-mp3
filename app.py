@@ -6,17 +6,21 @@ from flask import Flask, request, render_template
 
 app = Flask(__name__)
 
+# Chemin de base où toutes les playlists seront enregistrées
 BASE_DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
 os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
 
 def sanitize_filename(name):
+    """
+    Nettoie un nom pour en faire un nom de dossier/fichier valide.
+    """
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
     name = re.sub(r'[^\w\-_.]', '_', name)
     return name.strip().replace('\n', '').replace('\r', '')
 
 def extract_playlist_name(url):
     """
-    Utilise yt-dlp pour obtenir le nom de la playlist.
+    Utilise yt-dlp pour extraire le titre de la playlist.
     """
     try:
         result = subprocess.run(
@@ -50,10 +54,11 @@ def index():
             ]
 
             try:
+                # 4. Lance le téléchargement dans ce dossier
                 subprocess.run(command, cwd=target_dir, check=True)
-                message = f"Téléchargement terminé dans le dossier : {playlist_name}"
+                message = f" Playlist téléchargée dans le dossier : <b>{playlist_name}</b>"
             except subprocess.CalledProcessError:
-                message = "Erreur pendant le téléchargement."
+                message = " Erreur pendant le téléchargement."
 
     return render_template("index.html", message=message)
 

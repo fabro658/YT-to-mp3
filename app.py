@@ -3,13 +3,16 @@ import subprocess
 import os
 import re
 import shutil
-import tempfile
+import zipfile
+import unicodedata
 
 app = Flask(__name__)
+BASE_DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
+os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
 
 def extract_playlist_name(url):
     """
-    Utilise yt-dlp pour obtenir le nom de la playlist proprement.
+    Utilise yt-dlp pour obtenir le nom de la playlist.
     """
     try:
         result = subprocess.run(
@@ -20,51 +23,67 @@ def extract_playlist_name(url):
             check=True
         )
         name = result.stdout.strip()
-        name = re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_')
-        return name if name else "playlist"
+        # Nettoie pour que ce soit un nom de dossier valide
+        return sanitize_filename(name)
     except subprocess.CalledProcessError:
-        return "playlist"
+        return "playlist_inconnue"
+
+def sanitize_filename(name):
+    """
+    Nettoie un nom de fichier en supprimant les caractères invalides.
+    """
+    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
+    name = re.sub(r'[^\w\-_.]', '_', name)
+    return name.strip().replace('\n', '').replace('\r', '')
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    message = ""
     if request.method == "POST":
         url = request.form.get("playlist_url")
         if url:
             playlist_name = extract_playlist_name(url)
+            target_dir = os.path.join(BASE_DOWNLOAD_DIR, playlist_name)
+            os.makedirs(target_dir, exist_ok=True)
 
-            # Créer un dossier temporaire
-            with tempfile.TemporaryDirectory() as temp_dir:
-                download_dir = os.path.join(temp_dir, playlist_name)
-                os.makedirs(download_dir, exist_ok=True)
+            command = [
+                "yt-dlp",
+                "-x",
+                "--audio-format", "mp3",
+                "-o", "%(playlist_index)s - %(title)s.%(ext)s",
+                url
+            ]
 
-                command = [
-                    "yt-dlp",
-                    "-x",
-                    "--audio-format", "mp3",
-                    "-o", "%(playlist_index)s - %(title)s.%(ext)s",
-                    url
-                ]
+            try:
+                subprocess.run(command, cwd=target_dir, check=True)
 
-                try:
-                    subprocess.run(command, cwd=download_dir, check=True)
+                # Créer un fichier ZIP de la playlist téléchargée
+                zip_path = os.path.join(BASE_DOWNLOAD_DIR, f"{playlist_name}.zip")
+                with zipfile.ZipFile(zip_path, "w") as zipf:
+                    for root, _, files in os.walk(target_dir):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            arcname = os.path.relpath(full_path, start=target_dir)
+                            zipf.write(full_path, arcname=arcname)
 
-                    # Créer l'archive ZIP
-                    zip_path = shutil.make_archive(
-                        os.path.join(temp_dir, playlist_name), 
-                        'zip', 
-                        root_dir=download_dir
-                    )
+                # Optionnel : supprimer le dossier temporaire une fois zippé
+                shutil.rmtree(target_dir)
 
-                    # Retourner le fichier ZIP directement au navigateur
-                    return send_file(
-                        zip_path,
-                        as_attachment=True,
-                        download_name=f"{playlist_name}.zip"
-                    )
+                # Envoie le ZIP au navigateur
+                return send_file(
+                    zip_path,
+                    as_attachment=True,
+                    download_name=f"{playlist_name}.zip",
+                    mimetype='application/zip'
+                )
 
-                except subprocess.CalledProcessError as e:
-                    return render_template("index.html", message="Erreur pendant le téléchargement.")
-    return render_template("index.html")
+            except subprocess.CalledProcessError:
+                message = "Erreur pendant le téléchargement."
+
+            except Exception as e:
+                message = f"Erreur serveur : {e}"
+
+    return render_template("index.html", message=message)
 
 if __name__ == "__main__":
     app.run(debug=True)

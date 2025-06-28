@@ -1,64 +1,42 @@
+from flask import Flask, render_template, request
+import yt_dlp
 import os
-import re
-import subprocess
-import unicodedata
-from flask import Flask, request, render_template
 
 app = Flask(__name__)
 
-BASE_DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
-os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
+DOWNLOAD_DIR = os.path.expanduser("~/Downloads")
 
-def sanitize_filename(name):
-    """
-    Nettoie un nom pour en faire un nom de dossier/fichier valide.
-    """
-    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
-    name = re.sub(r'[^\w\-_.]', '_', name)
-    return name.strip().replace('\n', '').replace('\r', '')
+def download_video(url, format_type):
+    if format_type == "mp3":
+        options = {
+            'format': 'bestaudio/best',
+            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
+    else:  # mp4
+        options = {
+            'format': 'mp4',
+            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        }
 
-def extract_playlist_name(url):
-    """
-    Utilise yt-dlp pour extraire le titre de la playlist.
-    """
-    try:
-        result = subprocess.run(
-            ["yt-dlp", "--print", "%(playlist_title)s", url],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True
-        )
-        raw_name = result.stdout.strip()
-        return sanitize_filename(raw_name)
-    except subprocess.CalledProcessError:
-        return "playlist_inconnue"
+    with yt_dlp.YoutubeDL(options) as ydl:
+        ydl.download([url])
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     message = ""
     if request.method == "POST":
         url = request.form.get("playlist_url")
-        if url:
-            playlist_name = extract_playlist_name(url)
-            target_dir = os.path.join(BASE_DOWNLOAD_DIR, playlist_name)
-            os.makedirs(target_dir, exist_ok=True)
-
-            command = [
-                "yt-dlp",
-                "-x",
-                "--audio-format", "mp3",
-                "-o", "%(playlist_index)s - %(title)s.%(ext)s",
-                url
-            ]
-
-            try:
-                # 4. Lance le téléchargement dans ce dossier
-                subprocess.run(command, cwd=target_dir, check=True)
-                message = f" Playlist téléchargée"
-            except subprocess.CalledProcessError:
-                message = " Erreur pendant le téléchargement."
-
+        format_type = request.form.get("format")
+        try:
+            download_video(url, format_type)
+            message = f"Téléchargement réussi en {format_type.upper()} !"
+        except Exception as e:
+            message = f"Erreur : {str(e)}"
     return render_template("index.html", message=message)
 
 if __name__ == "__main__":
